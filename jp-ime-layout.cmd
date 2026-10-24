@@ -24,7 +24,16 @@
 ::   jp-ime-layout.cmd --list           List the layout names
 ::   jp-ime-layout.cmd --undo           Restore the original layout
 ::   jp-ime-layout.cmd --status         Show the current setting (no admin)
+::   jp-ime-layout.cmd --hide-keyboard  Leave only the Japanese IME (no admin)
+::   jp-ime-layout.cmd --show-keyboard  Bring the other keyboards back
 ::   jp-ime-layout.cmd --help           Show all options
+::
+:: HIDING THE OTHER KEYBOARD
+::   Windows 11 does not let you remove the keyboard of the display language,
+::   and re-adds it if you clear it. --hide-keyboard keeps the language (and
+::   its spell checker) but makes the Japanese IME the default input method
+::   (Set-WinDefaultInputMethodOverride) and leaves only Japanese in
+::   HKCU\Keyboard Layout\Preload. It changes only the current user.
 ::
 :: NOTES
 ::   - Needs administrator rights to apply or undo. It asks via UAC.
@@ -92,6 +101,8 @@ if /i "%~1"=="--list"     (set "MODE=list"   & shift & goto parse)
 if /i "%~1"=="--help"     (set "MODE=help"   & shift & goto parse)
 if /i "%~1"=="-h"         (set "MODE=help"   & shift & goto parse)
 if /i "%~1"=="/?"         (set "MODE=help"   & shift & goto parse)
+if /i "%~1"=="--hide-keyboard" (set "MODE=hide" & shift & goto parse)
+if /i "%~1"=="--show-keyboard" (set "MODE=show" & shift & goto parse)
 if /i "%~1"=="--no-pause" (set "NOPAUSE=1"   & shift & goto parse)
 if /i "%~1"=="--elevated" (set "ELEVATED=1"  & shift & goto parse)
 if /i "%~1"=="-l" goto opt_layout
@@ -115,6 +126,8 @@ if defined NOPAUSE set "PAUSE_AT_END="
 if "%MODE%"=="help"   goto help
 if "%MODE%"=="list"   goto list
 if "%MODE%"=="status" goto status
+if "%MODE%"=="hide"   goto hide
+if "%MODE%"=="show"   goto show
 
 :: Validate the layout before asking for admin rights.
 if "%MODE%"=="apply" if not defined LAYOUT set "LAYOUT=%DEFAULT_LAYOUT%"
@@ -206,7 +219,41 @@ if exist "%DATA%\original.txt" (
     echo Original : not saved yet
 )
 reg query "HKCU\Keyboard Layout\Preload" 2>nul | find "00000411" >nul || echo Warning  : Japanese does not seem to be installed for this user.
+reg query "HKCU\Keyboard Layout\Preload" 2>nul | find "REG_SZ" | find /v "0411" >nul && (echo Keyboards: other keyboards are loaded too [--hide-keyboard hides them]) || echo Keyboards: Japanese only
 echo Note     : a change only takes effect after signing out and back in.
+goto end
+
+::---------------------------------------------------------------- hide / show
+:: Per-user settings: run without elevation, since an elevated window may
+:: belong to another user.
+:hide
+set "PS=$ErrorActionPreference = 'Stop';"
+set "PS=%PS% $ja = Get-WinUserLanguageList | Where-Object LanguageTag -like 'ja*' | Select-Object -First 1;"
+set "PS=%PS% if (-not $ja.InputMethodTips) { 'ERROR: Japanese input is not installed for this user.'; exit 4 };"
+set "PS=%PS% $tip = $ja.InputMethodTips[0]; Set-WinDefaultInputMethodOverride -InputTip $tip;"
+set "PS=%PS% $k = Get-Item 'HKCU:\Keyboard Layout\Preload';"
+set "PS=%PS% $n = @($k.GetValueNames() | Where-Object { $_ -match '\A\d+\z' } | Sort-Object { [int]$_ });"
+set "PS=%PS% $keep = @($n | ForEach-Object { $k.GetValue($_) } | Where-Object { $_ -like '*0411' });"
+set "PS=%PS% if (-not $keep) { $keep = @('00000411') };"
+set "PS=%PS% $n | ForEach-Object { Remove-ItemProperty $k.PSPath -Name $_ };"
+set "PS=%PS% for ($i = 0; $i -lt $keep.Count; $i++) { New-ItemProperty $k.PSPath -Name ($i + 1) -Value $keep[$i] -PropertyType String | Out-Null };"
+set "PS=%PS% 'Default input method: ' + $tip"
+call :ps || goto end
+echo Done: only the Japanese IME is left. The display language and its spell
+echo checker stay. SIGN OUT and back in for the change to take effect.
+goto end
+
+:: Removes the override and gives each language without a keyboard its
+:: default one, e.g. 0416:00000416 for pt-BR. Set-WinUserLanguageList also
+:: rewrites the Preload list.
+:show
+set "PS=$ErrorActionPreference = 'Stop'; Set-WinDefaultInputMethodOverride; $list = Get-WinUserLanguageList;"
+set "PS=%PS% foreach ($l in $list) { $id = '{0:X4}' -f ([Globalization.CultureInfo]$l.LanguageTag).LCID;"
+set "PS=%PS% if (-not $l.InputMethodTips -and $id -ne '1000') { $l.InputMethodTips.Add($id + ':0000' + $id) } };"
+set "PS=%PS% Set-WinUserLanguageList $list -Force"
+call :ps || goto end
+echo Done: the keyboards of the other languages are back.
+echo SIGN OUT and back in for the change to take effect.
 goto end
 
 ::---------------------------------------------------------------- list
@@ -243,6 +290,9 @@ echo   --list                 List the layout names. No admin rights needed.
 echo   --undo, --revert, -u   Restore the original value saved before the first
 echo                          change; kbd101.dll if none was saved.
 echo   --status, -s           Show the current value. No admin rights needed.
+echo   --hide-keyboard        Leave only the Japanese IME for this user, keeping
+echo                          the display language and its spell checker.
+echo   --show-keyboard        Bring the other languages' keyboards back.
 echo   --no-pause             Do not wait for a key press at the end.
 echo   --help, -h, /?         Show this help.
 echo.
@@ -257,6 +307,7 @@ echo   "%VAL%"  [REG_SZ]
 echo.
 echo Notes:
 echo   - Applying or undoing needs admin rights; the script asks via UAC.
+echo     --hide-keyboard and --show-keyboard do not.
 echo   - Takes effect only after signing out and back in, or restarting.
 echo   - The Alt+` IME toggle may stop working on layouts where the key left of
 echo     "1" is not "`", e.g. de, fr. Set another IME on/off key in the
@@ -266,7 +317,8 @@ echo     major Windows update, can reset the value. Re-run the script then.
 echo   - Backup and log: %DATA%
 echo.
 echo Exit codes: 0 ok, 1 registry write failed, 2 bad arguments,
-echo             3 layout not found, 5 not elevated, 1223 UAC declined.
+echo             3 layout not found, 4 Japanese not installed,
+echo             5 not elevated, 1223 UAC declined.
 goto end
 
 ::---------------------------------------------------------------- helpers
@@ -325,6 +377,12 @@ if errorlevel 1 (
 )
 >>"%LOG%" echo %date% %time%  user=%USERNAME%  "%VAL%": %CUR% -^> %~1
 exit /b 0
+
+:: Runs the PowerShell code in PS. Errors exit with 1.
+:ps
+powershell -NoProfile -Command "& ([scriptblock]::Create($env:PS))"
+set "RC=%ERRORLEVEL%"
+exit /b %RC%
 
 ::---------------------------------------------------------------- end
 :end

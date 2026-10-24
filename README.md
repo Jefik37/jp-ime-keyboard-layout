@@ -27,6 +27,7 @@ From the Command Prompt:
 jp-ime-layout.cmd                    use ABNT2
 jp-ime-layout.cmd --layout us-intl   use US International
 jp-ime-layout.cmd --undo             back to the original
+jp-ime-layout.cmd --hide-keyboard    leave only the Japanese IME
 ```
 
 | Option | Description |
@@ -36,10 +37,12 @@ jp-ime-layout.cmd --undo             back to the original
 | `--status`, `-s` | Show the current value |
 | `--list` | List the layout names |
 | `--undo`, `--revert`, `-u` | Restore the original value |
+| `--hide-keyboard` | Leave only the Japanese IME for this user (see [Hiding the other keyboard](#hiding-the-other-keyboard)) |
+| `--show-keyboard` | Bring the other languages' keyboards back |
 | `--no-pause` | Don't wait for a key press at the end |
 | `--help`, `-h`, `/?` | Show all options |
 
-Applying and undoing need administrator rights (the script asks via UAC). `--status` and `--list` don't.
+Applying and undoing need administrator rights (the script asks via UAC). `--status`, `--list`, `--hide-keyboard` and `--show-keyboard` don't.
 
 ## Layouts
 
@@ -65,6 +68,15 @@ Before the first change, the original value is saved once in `%ProgramData%\JpIm
 
 `--undo` puts the saved value back. If nothing was saved, it falls back to `kbd101.dll` (English 101/102 keys). On a Japanese 106/109 keyboard, use `--undo --layout jp106`.
 
+## Hiding the other keyboard
+
+With ABNT2 under the IME, the separate Portuguese keyboard is no longer needed, but Windows 11 doesn't let you remove the keyboard of the display language and adds it back if you clear it. `--hide-keyboard` keeps the language and its spell checker and, for the current user:
+
+- makes the Japanese IME the default input method (`Set-WinDefaultInputMethodOverride` with the first input method of the Japanese language);
+- leaves only Japanese in `HKCU\Keyboard Layout\Preload`.
+
+`--show-keyboard` removes the override and gives each language without a keyboard its default one (`0416:00000416` for pt-BR). Both take effect after you sign out and back in. Changing the languages in Settings may bring the keyboard back; run `--hide-keyboard` again.
+
 ## Caveats
 
 - Windows rewrites the value if you change "Hardware keyboard layout" in the Japanese language options, and a major Windows update may reset it. Check with `--status` and run the script again.
@@ -78,5 +90,6 @@ Before the first change, the original value is saved once in `%ProgramData%\JpIm
 | `1` | Registry write failed |
 | `2` | Bad arguments |
 | `3` | Layout DLL not found |
+| `4` | Japanese input not installed (`--hide-keyboard`) |
 | `5` | Could not get administrator rights |
 | `1223` | UAC prompt declined |

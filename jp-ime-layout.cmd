@@ -19,21 +19,23 @@
 ::   (Japanese 106/109 keys). This script points it to another layout DLL.
 ::
 :: USAGE
-::   jp-ime-layout.cmd                  Apply the default layout (ABNT2)
+::   jp-ime-layout.cmd                  Apply ABNT2 and hide the other keyboards
 ::   jp-ime-layout.cmd --layout pt      Apply another layout (name or DLL)
+::   jp-ime-layout.cmd --keep-keyboard  Apply, but keep the other keyboards
 ::   jp-ime-layout.cmd --list           List the layout names
-::   jp-ime-layout.cmd --undo           Restore the original layout
+::   jp-ime-layout.cmd --undo           Restore the original layout and keyboards
 ::   jp-ime-layout.cmd --status         Show the current setting (no admin)
-::   jp-ime-layout.cmd --hide-keyboard  Leave only the Japanese IME (no admin)
-::   jp-ime-layout.cmd --show-keyboard  Bring the other keyboards back
+::   jp-ime-layout.cmd --hide-keyboard  Only hide the other keyboards (no admin)
+::   jp-ime-layout.cmd --show-keyboard  Only bring them back (no admin)
 ::   jp-ime-layout.cmd --help           Show all options
 ::
 :: HIDING THE OTHER KEYBOARD
 ::   Windows 11 does not let you remove the keyboard of the display language,
-::   and re-adds it if you clear it. --hide-keyboard keeps the language (and
+::   and re-adds it if you clear it. Applying a layout keeps the language (and
 ::   its spell checker) but makes the Japanese IME the default input method
 ::   (Set-WinDefaultInputMethodOverride) and leaves only Japanese in
-::   HKCU\Keyboard Layout\Preload. It changes only the current user.
+::   HKCU\Keyboard Layout\Preload. This changes only the current user, so it
+::   runs in the window that asked for admin rights, not in the elevated one.
 ::
 :: NOTES
 ::   - Needs administrator rights to apply or undo. It asks via UAC.
@@ -78,6 +80,7 @@ set "MODE=apply"
 set "LAYOUT="
 set "ELEVATED="
 set "NOPAUSE="
+set "KEEP="
 set "PAUSE_AT_END="
 set "RC=0"
 :: Saved before parsing the arguments, because SHIFT also shifts %0.
@@ -103,6 +106,7 @@ if /i "%~1"=="-h"         (set "MODE=help"   & shift & goto parse)
 if /i "%~1"=="/?"         (set "MODE=help"   & shift & goto parse)
 if /i "%~1"=="--hide-keyboard" (set "MODE=hide" & shift & goto parse)
 if /i "%~1"=="--show-keyboard" (set "MODE=show" & shift & goto parse)
+if /i "%~1"=="--keep-keyboard" (set "KEEP=1"    & shift & goto parse)
 if /i "%~1"=="--no-pause" (set "NOPAUSE=1"   & shift & goto parse)
 if /i "%~1"=="--elevated" (set "ELEVATED=1"  & shift & goto parse)
 if /i "%~1"=="-l" goto opt_layout
@@ -154,10 +158,11 @@ powershell -NoProfile -Command "try { $p = Start-Process -FilePath $env:ComSpec 
 set "RC=%ERRORLEVEL%"
 if "%RC%"=="1223" (
     echo Cancelled: UAC prompt was declined.
-) else (
-    echo Elevated window finished with exit code %RC%.
-    set "PAUSE_AT_END="
+    goto end
 )
+echo Elevated window finished with exit code %RC%.
+if "%RC%"=="0" if not defined KEEP goto keyboard
+set "PAUSE_AT_END="
 goto end
 
 :elevated_ok
@@ -170,7 +175,7 @@ if "%MODE%"=="undo" goto undo
 if /i "%CUR%"=="%RES_DLL%" (
     echo Already set: "%VAL%" = %CUR% [%RES_DESC%]. Nothing to do.
     echo If it is not working yet, sign out and back in.
-    goto end
+    goto keyboard
 )
 :: Save the original value once, before the first change.
 if not exist "%DATA%\original.txt" (
@@ -184,7 +189,7 @@ call :set_value "%RES_DLL%" || goto end
 echo.
 echo Done: "%VAL%" changed from %CUR% to %RES_DLL% [%RES_DESC%].
 echo SIGN OUT and back in [or restart] for the change to take effect.
-goto end
+goto keyboard
 
 ::---------------------------------------------------------------- undo
 :undo
@@ -198,13 +203,13 @@ if not defined TARGET (
 )
 if /i "%CUR%"=="%TARGET%" (
     echo Already set to %TARGET%. Nothing to do.
-    goto end
+    goto keyboard
 )
 call :set_value "%TARGET%" || goto end
 echo.
 echo Done: "%VAL%" changed from %CUR% to %TARGET%.
 echo SIGN OUT and back in [or restart] for the change to take effect.
-goto end
+goto keyboard
 
 ::---------------------------------------------------------------- status
 :status
@@ -225,7 +230,14 @@ goto end
 
 ::---------------------------------------------------------------- hide / show
 :: Per-user settings: run without elevation, since an elevated window may
-:: belong to another user.
+:: belong to another user. After applying, hide the other keyboards; after
+:: undoing, bring them back.
+:keyboard
+if defined ELEVATED goto end
+if defined KEEP goto end
+echo.
+if "%MODE%"=="undo" goto show
+
 :hide
 set "PS=$ErrorActionPreference = 'Stop';"
 set "PS=%PS% $ja = Get-WinUserLanguageList | Where-Object LanguageTag -like 'ja*' | Select-Object -First 1;"
@@ -283,21 +295,26 @@ echo.
 echo Usage: jp-ime-layout.cmd [options]
 echo.
 echo   [no option], --apply   Apply a layout. Default: %DEFAULT_LAYOUT% [Brazilian ABNT2].
+echo                          Also hides the other keyboards, leaving only the
+echo                          Japanese IME; the display language and its spell
+echo                          checker stay.
 echo   --layout, -l NAME      Layout to use: a name from --list, e.g. pt, us-intl,
 echo                          or a DLL file name from System32, e.g. kbdca.dll.
 echo                          With --undo, restores to this layout instead.
+echo   --keep-keyboard        Do not hide [or, with --undo, show] the keyboards.
 echo   --list                 List the layout names. No admin rights needed.
 echo   --undo, --revert, -u   Restore the original value saved before the first
-echo                          change; kbd101.dll if none was saved.
+echo                          change; kbd101.dll if none was saved. Also brings
+echo                          the other keyboards back.
 echo   --status, -s           Show the current value. No admin rights needed.
-echo   --hide-keyboard        Leave only the Japanese IME for this user, keeping
-echo                          the display language and its spell checker.
-echo   --show-keyboard        Bring the other languages' keyboards back.
+echo   --hide-keyboard        Only hide the other keyboards. No admin rights.
+echo   --show-keyboard        Only bring them back. No admin rights.
 echo   --no-pause             Do not wait for a key press at the end.
 echo   --help, -h, /?         Show this help.
 echo.
 echo Examples:
-echo   jp-ime-layout.cmd                    use ABNT2
+echo   jp-ime-layout.cmd                    use ABNT2, only the Japanese IME
+echo   jp-ime-layout.cmd --keep-keyboard    use ABNT2, keep the other keyboards
 echo   jp-ime-layout.cmd --layout us-intl   use US International
 echo   jp-ime-layout.cmd --undo             back to the original
 echo.
@@ -307,7 +324,7 @@ echo   "%VAL%"  [REG_SZ]
 echo.
 echo Notes:
 echo   - Applying or undoing needs admin rights; the script asks via UAC.
-echo     --hide-keyboard and --show-keyboard do not.
+echo     Hiding and showing the keyboards do not; they change only this user.
 echo   - Takes effect only after signing out and back in, or restarting.
 echo   - The Alt+` IME toggle may stop working on layouts where the key left of
 echo     "1" is not "`", e.g. de, fr. Set another IME on/off key in the

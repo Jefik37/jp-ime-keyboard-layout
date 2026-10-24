@@ -19,26 +19,27 @@ Windows only ever sets it to `kbd101.dll` (English) or `kbd106.dll` (Japanese). 
 
 ## Usage
 
-Download [`jp-ime-layout.cmd`](jp-ime-layout.cmd) and double-click it. It asks for administrator rights through UAC and applies ABNT2. The change only takes effect after you sign out and back in (or restart).
+Download [`jp-ime-layout.cmd`](jp-ime-layout.cmd) and double-click it. It asks for administrator rights through UAC, applies ABNT2 and [hides the other keyboards](#hiding-the-other-keyboard). The change only takes effect after you sign out and back in (or restart).
 
 From the Command Prompt:
 
 ```text
-jp-ime-layout.cmd                    use ABNT2
+jp-ime-layout.cmd                    use ABNT2, only the Japanese IME
+jp-ime-layout.cmd --keep-keyboard    use ABNT2, keep the other keyboards
 jp-ime-layout.cmd --layout us-intl   use US International
 jp-ime-layout.cmd --undo             back to the original
-jp-ime-layout.cmd --hide-keyboard    leave only the Japanese IME
 ```
 
 | Option | Description |
 | --- | --- |
-| *(none)*, `--apply` | Apply a layout (default: `abnt2`) |
+| *(none)*, `--apply` | Apply a layout (default: `abnt2`) and hide the other keyboards |
 | `--layout NAME`, `-l NAME` | Layout to use: a name from [Layouts](#layouts) or the file name of any layout DLL in `System32`, like `kbdca.dll`. With `--undo`, restores to this layout instead |
 | `--status`, `-s` | Show the current value |
 | `--list` | List the layout names |
-| `--undo`, `--revert`, `-u` | Restore the original value |
-| `--hide-keyboard` | Leave only the Japanese IME for this user (see [Hiding the other keyboard](#hiding-the-other-keyboard)) |
-| `--show-keyboard` | Bring the other languages' keyboards back |
+| `--keep-keyboard` | Don't hide the other keyboards (with `--undo`, don't bring them back) |
+| `--undo`, `--revert`, `-u` | Restore the original value and bring the other keyboards back |
+| `--hide-keyboard` | Only hide the other keyboards |
+| `--show-keyboard` | Only bring them back |
 | `--no-pause` | Don't wait for a key press at the end |
 | `--help`, `-h`, `/?` | Show all options |
 
@@ -70,12 +71,12 @@ Before the first change, the original value is saved once in `%ProgramData%\JpIm
 
 ## Hiding the other keyboard
 
-With ABNT2 under the IME, the separate Portuguese keyboard is no longer needed, but Windows 11 doesn't let you remove the keyboard of the display language and adds it back if you clear it. `--hide-keyboard` keeps the language and its spell checker and, for the current user:
+With ABNT2 under the IME, the separate Portuguese keyboard is no longer needed, but Windows 11 doesn't let you remove the keyboard of the display language and adds it back if you clear it. So, unless you pass `--keep-keyboard`, applying a layout keeps the language and its spell checker and, for the current user:
 
 - makes the Japanese IME the default input method (`Set-WinDefaultInputMethodOverride` with the first input method of the Japanese language);
 - leaves only Japanese in `HKCU\Keyboard Layout\Preload`.
 
-`--show-keyboard` removes the override and gives each language without a keyboard its default one (`0416:00000416` for pt-BR). Both take effect after you sign out and back in. Changing the languages in Settings may bring the keyboard back; run `--hide-keyboard` again.
+`--undo` (or `--show-keyboard`) removes the override and gives each language without a keyboard its default one (`0416:00000416` for pt-BR). Both take effect after you sign out and back in. Changing the languages in Settings may bring the keyboard back; run the script again.
 
 ## Caveats
 
@@ -90,6 +91,6 @@ With ABNT2 under the IME, the separate Portuguese keyboard is no longer needed, 
 | `1` | Registry write failed |
 | `2` | Bad arguments |
 | `3` | Layout DLL not found |
-| `4` | Japanese input not installed (`--hide-keyboard`) |
+| `4` | Japanese input not installed (when hiding the keyboards) |
 | `5` | Could not get administrator rights |
 | `1223` | UAC prompt declined |

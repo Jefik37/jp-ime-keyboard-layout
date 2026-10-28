@@ -33,8 +33,10 @@
 ::   Windows 11 does not let you remove the keyboard of the display language,
 ::   and re-adds it if you clear it. Applying a layout keeps the language (and
 ::   its spell checker) but makes the Japanese IME the default input method
-::   (Set-WinDefaultInputMethodOverride) and leaves only Japanese in
-::   HKCU\Keyboard Layout\Preload. This changes only the current user, so it
+::   (Set-WinDefaultInputMethodOverride), leaves only Japanese in
+::   HKCU\Keyboard Layout\Preload and removes the default keyboard of the other
+::   languages (e.g. 0416:00000416) from their entry under HKCU\Control Panel\
+::   International\User Profile. This changes only the current user, so it
 ::   runs in the window that asked for admin rights, not in the elevated one.
 ::
 :: NOTES
@@ -240,7 +242,7 @@ if "%MODE%"=="undo" goto show
 
 :hide
 set "PS=$ErrorActionPreference = 'Stop';"
-set "PS=%PS% $ja = Get-WinUserLanguageList | Where-Object LanguageTag -like 'ja*' | Select-Object -First 1;"
+set "PS=%PS% $ja = (Get-WinUserLanguageList) | Where-Object LanguageTag -like 'ja*' | Select-Object -First 1;"
 set "PS=%PS% if (-not $ja.InputMethodTips) { 'ERROR: Japanese input is not installed for this user.'; exit 4 };"
 set "PS=%PS% $tip = $ja.InputMethodTips[0]; Set-WinDefaultInputMethodOverride -InputTip $tip;"
 set "PS=%PS% $k = Get-Item 'HKCU:\Keyboard Layout\Preload';"
@@ -249,6 +251,9 @@ set "PS=%PS% $keep = @($n | ForEach-Object { $k.GetValue($_) } | Where-Object { 
 set "PS=%PS% if (-not $keep) { $keep = @('00000411') };"
 set "PS=%PS% $n | ForEach-Object { Remove-ItemProperty $k.PSPath -Name $_ };"
 set "PS=%PS% for ($i = 0; $i -lt $keep.Count; $i++) { New-ItemProperty $k.PSPath -Name ($i + 1) -Value $keep[$i] -PropertyType String | Out-Null };"
+set "PS=%PS% $up = 'HKCU:\Control Panel\International\User Profile';"
+set "PS=%PS% foreach ($l in (Get-WinUserLanguageList)) { if ($l.LanguageTag -notlike 'ja*') { $id = '{0:X4}' -f ([Globalization.CultureInfo]$l.LanguageTag).LCID;"
+set "PS=%PS% Remove-ItemProperty (Join-Path $up $l.LanguageTag) -Name ($id + ':0000' + $id) -ErrorAction SilentlyContinue } };"
 set "PS=%PS% 'Default input method: ' + $tip"
 call :ps || goto end
 echo Done: only the Japanese IME is left. The display language and its spell

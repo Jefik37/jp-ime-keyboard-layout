@@ -74,9 +74,10 @@ Before the first change, the original value is saved once in `%ProgramData%\JpIm
 With ABNT2 under the IME, the separate Portuguese keyboard is no longer needed, but Windows 11 doesn't let you remove the keyboard of the display language and adds it back if you clear it. So, unless you pass `--keep-keyboard`, applying a layout keeps the language and its spell checker and, for the current user:
 
 - makes the Japanese IME the default input method (`Set-WinDefaultInputMethodOverride` with the first input method of the Japanese language);
-- leaves only Japanese in `HKCU\Keyboard Layout\Preload`.
+- leaves only Japanese in `HKCU\Keyboard Layout\Preload`;
+- removes the default keyboard of the other languages (`0416:00000416` for pt-BR) from the language list, by deleting that value under `HKCU\Control Panel\International\User Profile\<language>`. It writes the registry directly instead of using `Set-WinUserLanguageList`, which would add the keyboard back.
 
-`--undo` (or `--show-keyboard`) removes the override and gives each language without a keyboard its default one (`0416:00000416` for pt-BR). Both take effect after you sign out and back in. Changing the languages in Settings may bring the keyboard back; run the script again.
+`--undo` (or `--show-keyboard`) removes the override and gives each language without a keyboard its default one (`0416:00000416` for pt-BR) again. Both take effect after you sign out and back in. Changing the languages in Settings may bring the keyboard back; run the script again.
 
 ## Caveats
 
